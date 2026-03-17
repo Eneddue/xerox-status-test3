@@ -1,99 +1,116 @@
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-  const firebaseConfig = {
- 
-  apiKey: "AIzaSyAfaLWUz-yJLC4kDhQWtouwKiAYNvIpqD0",
- 
-  authDomain: "xerox-status-page.firebaseapp.com",
- 
-  databaseURL: "https://xerox-status-page-default-rtdb.europe-west1.firebasedatabase.app",
- 
-  projectId: "xerox-status-page",
- 
-  storageBucket: "xerox-status-page.firebasestorage.app",
- 
-  messagingSenderId: "893873264280",
- 
-  appId: "1:893873264280:web:e5e33276c3b4c841f562ed"
- 
-};
- 
-
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const stateRef = ref(db, "deviceState");
-
-  const container = document.getElementById('container');
-  const timerEl = document.getElementById('timer');
-
-  function randomInterval(minSeconds, maxSeconds) {
-    return Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
-  }
-
-  function formatTime(seconds) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  }
-
-  function render(visible) {
-    container.innerHTML = '';
-    if (visible) {
-      const div = document.createElement('div');
-      div.className = 'device-summary';
-      div.textContent = 'Device Summary';
-      container.appendChild(div);
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Status</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      margin-top: 50px;
     }
-  }
+    .device-summary {
+      font-size: 24px;
+      font-weight: bold;
+      color: green;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
 
-  function startCountdown(nextChangeTime) {
-    if (window.timerInterval) clearInterval(window.timerInterval);
+  <div id="container"></div>
+  <div id="timer"></div>
 
-    function update() {
-      const diff = Math.max(0, Math.floor((nextChangeTime - Date.now()) / 1000));
-      timerEl.textContent = `Kolejna zmiana za: ${formatTime(diff)}`;
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAfaLWUz-yJLC4kDhQWtouwKiAYNvIpqD0",
+      authDomain: "xerox-status-page.firebaseapp.com",
+      databaseURL: "https://xerox-status-page-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "xerox-status-page",
+      storageBucket: "xerox-status-page.firebasestorage.app",
+      messagingSenderId: "893873264280",
+      appId: "1:893873264280:web:e5e33276c3b4c841f562ed"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const stateRef = ref(db, "deviceState");
+
+    const container = document.getElementById('container');
+    const timerEl = document.getElementById('timer');
+
+    function randomInterval(minSeconds, maxSeconds) {
+      return Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
     }
 
-    update();
-    window.timerInterval = setInterval(update, 1000);
-  }
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
 
-  function scheduleNext(state) {
-    const nextInterval = randomInterval(30, 420);
-    const nextChangeTime = Date.now() + nextInterval;
+    function render(visible) {
+      if (!container) return;
 
-    set(stateRef, {
-      visible: !state.visible,
-      nextChangeTime
+      container.innerHTML = '';
+      if (visible) {
+        const div = document.createElement('div');
+        div.className = 'device-summary';
+        div.textContent = 'Device Summary';
+        container.appendChild(div);
+      }
+    }
+
+    function startCountdown(nextChangeTime) {
+      if (window.timerInterval) clearInterval(window.timerInterval);
+
+      function update() {
+        const diff = Math.max(0, Math.floor((nextChangeTime - Date.now()) / 1000));
+        timerEl.textContent = `Kolejna zmiana za: ${formatTime(diff)}`;
+      }
+
+      update();
+      window.timerInterval = setInterval(update, 1000);
+    }
+
+    function scheduleNext(state) {
+      const nextInterval = randomInterval(30, 420);
+      const nextChangeTime = Date.now() + nextInterval;
+
+      set(stateRef, {
+        visible: !state.visible,
+        nextChangeTime
+      });
+    }
+
+    onValue(stateRef, (snapshot) => {
+      const state = snapshot.val();
+
+      if (!state) {
+        scheduleNext({ visible: false });
+        return;
+      }
+
+      render(state.visible);
+      startCountdown(state.nextChangeTime);
+
+      const delay = state.nextChangeTime - Date.now();
+
+      if (delay > 0) {
+        setTimeout(() => {
+          const now = Date.now();
+          if (now >= state.nextChangeTime) {
+            scheduleNext(state);
+          }
+        }, delay);
+      }
     });
-  }
+  </script>
 
-  // 🔁 nasłuch zmian (synchronizacja wszystkich klientów)
-  onValue(stateRef, (snapshot) => {
-    const state = snapshot.val();
-
-    if (!state) {
-      // pierwszy klient inicjalizuje stan
-      scheduleNext({ visible: false });
-      return;
-    }
-
-    render(state.visible);
-    startCountdown(state.nextChangeTime);
-
-    const delay = state.nextChangeTime - Date.now();
-
-if (delay > 0) {
-  setTimeout(() => {
-    const now = Date.now();
-
-    // tylko jeśli NIKT jeszcze nie zaktualizował
-    if (now >= state.nextChangeTime) {
-      scheduleNext(state);
-    }
-  }, delay);
-}
-  });
-</script>
+</body>
+</html>

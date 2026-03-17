@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Losowy status Xerox</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+    }
+    .device-summary {
+      font-size: 24px;
+      color: green;
+    }
+    .timer {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Status urządzenia</h1>
+
+<div id="container"></div>
+<div id="timer" class="timer"></div>
+
+<script>
+  const container = document.getElementById('container');
+  const timerEl = document.getElementById('timer');
+
+  function randomInterval(minSeconds, maxSeconds) {
+    const minMs = minSeconds * 1000;
+    const maxMs = maxSeconds * 1000;
+    return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  }
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  let visible = false;
+  let countdown = 0;
+  let countdownInterval = null;
+
+  function startCountdown(ms) {
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    countdown = Math.floor(ms / 1000);
+    timerEl.textContent = `Kolejna zmiana za: ${formatTime(countdown)}`;
+
+    countdownInterval = setInterval(() => {
+      countdown--;
+      timerEl.textContent = `Kolejna zmiana za: ${formatTime(countdown)}`;
+
+      if (countdown <= 0) {
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+  }
+
+  function toggleText() {
+    if (visible) {
+      container.innerHTML = '';
+      visible = false;
+    } else {
+      const div = document.createElement('div');
+      div.className = 'device-summary';
+      div.textContent = 'Device Summary';
+      container.appendChild(div);
+      visible = true;
+    }
+
+    const nextInterval = randomInterval(30, 420);
+    startCountdown(nextInterval);
+    setTimeout(toggleText, nextInterval);
+  }
+
+  // start
+  toggleText();
+</script>
+
+</body>
+</html>

@@ -25,9 +25,9 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-  const firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyBzXBWdMD6IW0MEJTmHa4rdRz3roDBOXlc",
   authDomain: "xerox-status.firebaseapp.com",
   databaseURL: "https://xerox-status-default-rtdb.europe-west1.firebasedatabase.app",
@@ -79,49 +79,83 @@
       window.timerInterval = setInterval(update, 1000);
     }
 
-    function tryBecomeLeader(state) {
-      if (!state.leaderId) {
-        set(stateRef, {
-          ...state,
-          leaderId: clientId
-        });
-      }
-    }
+    // 👑 leader election + failover
+    function maintainLeader() {
+      runTransaction(stateRef, (state) => {
+        if (state === null) return state;
 
-    function scheduleNext(state) {
-      const nextInterval = randomInterval(30, 420);
-      const nextChangeTime = Date.now() + nextInterval;
+        const now = Date.now();
 
-      set(stateRef, {
-        visible: !state.visible,
-        nextChangeTime,
-        leaderId: state.leaderId
+        // jeśli brak leadera lub leader "umarł" (>15s bez heartbeat)
+        if (!state.leaderId || now - (state.lastSeen || 0) > 15000) {
+          state.leaderId = clientId;
+          state.lastSeen = now;
+          return state;
+        }
+
+        // jeśli JA jestem leaderem → aktualizuj heartbeat
+        if (state.leaderId === clientId) {
+          state.lastSeen = now;
+          return state;
+        }
+
+        return state;
       });
     }
 
+    // 🔄 zmiana stanu (tylko leader)
+    function scheduleNext() {
+      runTransaction(stateRef, (state) => {
+        if (state === null) return state;
+
+        if (state.leaderId !== clientId) return state;
+
+        const now = Date.now();
+
+        if (now < state.nextChangeTime) return state;
+
+        const nextInterval = randomInterval(30, 420);
+
+        state.visible = !state.visible;
+        state.nextChangeTime = now + nextInterval;
+
+        return state;
+      });
+    }
+
+    // 🔁 główny loop
     onValue(stateRef, (snapshot) => {
       let state = snapshot.val();
 
+      // pierwszy start
       if (!state) {
-        set(stateRef, {
+        runTransaction(stateRef, () => ({
           visible: false,
           nextChangeTime: Date.now() + randomInterval(30, 420),
-          leaderId: clientId
-        });
+          leaderId: clientId,
+          lastSeen: Date.now()
+        }));
         return;
       }
 
-      tryBecomeLeader(state);
-
+      // render + timer
       render(state.visible);
       startCountdown(state.nextChangeTime);
 
-      const now = Date.now();
+      // leader maintenance
+      maintainLeader();
 
-      if (state.leaderId === clientId && now >= state.nextChangeTime) {
-        scheduleNext(state);
+      // jeśli jestem leaderem → sprawdzam czy zmienić stan
+      if (state.leaderId === clientId) {
+        scheduleNext();
       }
     });
+
+    // ❤️ heartbeat co 5s
+    setInterval(() => {
+      maintainLeader();
+    }, 5000);
+
   </script>
 
 </body>

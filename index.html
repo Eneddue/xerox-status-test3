@@ -99,16 +99,22 @@
       render(state.visible);
       startCountdown(state.nextChangeTime);
 
-      const delay = state.nextChangeTime - Date.now();
+    const now = Date.now();
 
-      if (delay > 0) {
-        setTimeout(() => {
-          const now = Date.now();
-          if (now >= state.nextChangeTime) {
-            scheduleNext(state);
-          }
-        }, delay);
-      }
+// 🔥 jeśli czas minął → od razu zmień
+if (now >= state.nextChangeTime) {
+  scheduleNext(state);
+  return;
+}
+
+const delay = state.nextChangeTime - now;
+
+// 🔁 czyścimy poprzedni timeout (WAŻNE)
+if (window.changeTimeout) clearTimeout(window.changeTimeout);
+
+window.changeTimeout = setTimeout(() => {
+  scheduleNext(state);
+}, delay);
     });
   </script>
 

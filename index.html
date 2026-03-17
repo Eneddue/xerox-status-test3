@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Status</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      margin-top: 50px;
+    }
+    .device-summary {
+      font-size: 24px;
+      font-weight: bold;
+      color: green;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container"></div>
+  <div id="timer"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+  apiKey: "AIzaSyBzXBWdMD6IW0MEJTmHa4rdRz3roDBOXlc",
+  authDomain: "xerox-status.firebaseapp.com",
+  databaseURL: "https://xerox-status-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "xerox-status",
+  storageBucket: "xerox-status.firebasestorage.app",
+  messagingSenderId: "237100111867",
+  appId: "1:237100111867:web:fcaa8cda396b3e0a381d5e"
+};
+
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const stateRef = ref(db, "deviceState");
+
+    const clientId = crypto.randomUUID();
+
+    const container = document.getElementById('container');
+    const timerEl = document.getElementById('timer');
+
+    function randomInterval(minSeconds, maxSeconds) {
+      return Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
+    }
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function render(visible) {
+      container.innerHTML = '';
+      if (visible) {
+        const div = document.createElement('div');
+        div.className = 'device-summary';
+        div.textContent = 'Device Summary';
+        container.appendChild(div);
+      }
+    }
+
+    function startCountdown(nextChangeTime) {
+      if (window.timerInterval) clearInterval(window.timerInterval);
+
+      function update() {
+        const diff = Math.max(0, Math.floor((nextChangeTime - Date.now()) / 1000));
+        timerEl.textContent = `Kolejna zmiana za: ${formatTime(diff)}`;
+      }
+
+      update();
+      window.timerInterval = setInterval(update, 1000);
+    }
+
+    function tryBecomeLeader(state) {
+      if (!state.leaderId) {
+        set(stateRef, {
+          ...state,
+          leaderId: clientId
+        });
+      }
+    }
+
+    function scheduleNext(state) {
+      const nextInterval = randomInterval(30, 420);
+      const nextChangeTime = Date.now() + nextInterval;
+
+      set(stateRef, {
+        visible: !state.visible,
+        nextChangeTime,
+        leaderId: state.leaderId
+      });
+    }
+
+    onValue(stateRef, (snapshot) => {
+      let state = snapshot.val();
+
+      if (!state) {
+        set(stateRef, {
+          visible: false,
+          nextChangeTime: Date.now() + randomInterval(30, 420),
+          leaderId: clientId
+        });
+        return;
+      }
+
+      tryBecomeLeader(state);
+
+      render(state.visible);
+      startCountdown(state.nextChangeTime);
+
+      const now = Date.now();
+
+      if (state.leaderId === clientId && now >= state.nextChangeTime) {
+        scheduleNext(state);
+      }
+    });
+  </script>
+
+</body>
+</html>

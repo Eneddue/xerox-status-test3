@@ -27,16 +27,15 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, ref, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBzXBWdMD6IW0MEJTmHa4rdRz3roDBOXlc",
-  authDomain: "xerox-status.firebaseapp.com",
-  databaseURL: "https://xerox-status-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "xerox-status",
-  storageBucket: "xerox-status.firebasestorage.app",
-  messagingSenderId: "237100111867",
-  appId: "1:237100111867:web:fcaa8cda396b3e0a381d5e"
-};
-
+    const firebaseConfig = {
+      apiKey: "AIzaSyBzXBWdMD6IW0MEJTmHa4rdRz3roDBOXlc",
+      authDomain: "xerox-status.firebaseapp.com",
+      databaseURL: "https://xerox-status-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "xerox-status",
+      storageBucket: "xerox-status.firebasestorage.app",
+      messagingSenderId: "237100111867",
+      appId: "1:237100111867:web:fcaa8cda396b3e0a381d5e"
+    };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
@@ -79,21 +78,18 @@ const firebaseConfig = {
       window.timerInterval = setInterval(update, 1000);
     }
 
-    // 👑 leader election + failover
     function maintainLeader() {
       runTransaction(stateRef, (state) => {
-        if (state === null) return state;
+        if (!state) return state;
 
         const now = Date.now();
 
-        // jeśli brak leadera lub leader "umarł" (>15s bez heartbeat)
         if (!state.leaderId || now - (state.lastSeen || 0) > 15000) {
           state.leaderId = clientId;
           state.lastSeen = now;
           return state;
         }
 
-        // jeśli JA jestem leaderem → aktualizuj heartbeat
         if (state.leaderId === clientId) {
           state.lastSeen = now;
           return state;
@@ -103,27 +99,7 @@ const firebaseConfig = {
       });
     }
 
-    // 🔄 zmiana stanu (tylko leader)
-    function scheduleNext() {
-      runTransaction(stateRef, (state) => {
-        if (state === null) return state;
-
-        if (state.leaderId !== clientId) return state;
-
-        const now = Date.now();
-
-        if (now < state.nextChangeTime) return state;
-
-        const nextInterval = randomInterval(30, 420);
-
-        state.visible = !state.visible;
-        state.nextChangeTime = now + nextInterval;
-
-        return state;
-      });
-    }
-
-    // 🔁 główny loop
+    // 🔁 GŁÓWNY NASŁUCH
     onValue(stateRef, (snapshot) => {
       let state = snapshot.val();
 
@@ -131,30 +107,56 @@ const firebaseConfig = {
       if (!state) {
         runTransaction(stateRef, () => ({
           visible: false,
-          nextChangeTime: Date.now() + randomInterval(30, 420),
+          nextChangeTime: Date.now() + randomInterval(30, 120),
           leaderId: clientId,
           lastSeen: Date.now()
         }));
         return;
       }
 
-      // render + timer
+      // 🔧 FIX: jeśli czas jest z kosmosu → napraw
+      const now = Date.now();
+      if (state.nextChangeTime > now + 10 * 60 * 1000) {
+        runTransaction(stateRef, (s) => {
+          if (!s) return s;
+          s.nextChangeTime = now + randomInterval(30, 120);
+          return s;
+        });
+        return;
+      }
+
       render(state.visible);
       startCountdown(state.nextChangeTime);
 
-      // leader maintenance
       maintainLeader();
-
-      // jeśli jestem leaderem → sprawdzam czy zmienić stan
-      if (state.leaderId === clientId) {
-        scheduleNext();
-      }
     });
 
-    // ❤️ heartbeat co 5s
+    // ❤️ heartbeat
     setInterval(() => {
       maintainLeader();
     }, 5000);
+
+    // 🔥 KLUCZOWY LOOP (zmiana stanu)
+    setInterval(() => {
+      runTransaction(stateRef, (state) => {
+        if (!state) return state;
+
+        if (state.leaderId !== clientId) return state;
+
+        const now = Date.now();
+
+        if (now < state.nextChangeTime) return state;
+
+        const nextInterval = randomInterval(30, 120);
+
+        state.visible = !state.visible;
+        state.nextChangeTime = now + nextInterval;
+
+        console.log("TOGGLE:", state.visible);
+
+        return state;
+      });
+    }, 1000);
 
   </script>
 

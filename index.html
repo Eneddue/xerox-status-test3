@@ -85,12 +85,15 @@
 
     const delay = state.nextChangeTime - Date.now();
 
-    if (delay > 0) {
-      setTimeout(() => {
-        scheduleNext(state);
-      }, delay);
-    } else {
+if (delay > 0) {
+  setTimeout(() => {
+    const now = Date.now();
+
+    // tylko jeśli NIKT jeszcze nie zaktualizował
+    if (now >= state.nextChangeTime) {
       scheduleNext(state);
     }
+  }, delay);
+}
   });
 </script>

@@ -1,59 +1,41 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-  <meta charset="UTF-8" />
-  <title>Status Xerox</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-    }
-    .device-summary {
-      font-size: 24px;
-      color: green;
-    }
-    .timer {
-      margin-top: 20px;
-      font-size: 18px;
-      color: #333;
-    }
-  </style>
-</head>
-<body>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-<h1>Status urządzenia</h1>
+  const firebaseConfig = {
+ 
+  apiKey: "AIzaSyAfaLWUz-yJLC4kDhQWtouwKiAYNvIpqD0",
+ 
+  authDomain: "xerox-status-page.firebaseapp.com",
+ 
+  databaseURL: "https://xerox-status-page-default-rtdb.europe-west1.firebasedatabase.app",
+ 
+  projectId: "xerox-status-page",
+ 
+  storageBucket: "xerox-status-page.firebasestorage.app",
+ 
+  messagingSenderId: "893873264280",
+ 
+  appId: "1:893873264280:web:e5e33276c3b4c841f562ed"
+ 
+};
+ 
 
-<div id="container"></div>
-<div id="timer" class="timer"></div>
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const stateRef = ref(db, "deviceState");
 
-<script>
   const container = document.getElementById('container');
   const timerEl = document.getElementById('timer');
 
-  const STORAGE_KEY = 'deviceStatusState';
-
   function randomInterval(minSeconds, maxSeconds) {
-    const minMs = minSeconds * 1000;
-    const maxMs = maxSeconds * 1000;
-    return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    return Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
   }
 
   function formatTime(seconds) {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
-  }
-
-  function saveState(visible, nextChangeTime) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      visible,
-      nextChangeTime
-    }));
-  }
-
-  function loadState() {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : null;
   }
 
   function render(visible) {
@@ -67,71 +49,48 @@
   }
 
   function startCountdown(nextChangeTime) {
+    if (window.timerInterval) clearInterval(window.timerInterval);
+
     function update() {
-      const now = Date.now();
-      const diff = Math.max(0, Math.floor((nextChangeTime - now) / 1000));
+      const diff = Math.max(0, Math.floor((nextChangeTime - Date.now()) / 1000));
       timerEl.textContent = `Kolejna zmiana za: ${formatTime(diff)}`;
     }
 
     update();
-    return setInterval(update, 1000);
+    window.timerInterval = setInterval(update, 1000);
   }
 
-  function scheduleNext(visible) {
+  function scheduleNext(state) {
     const nextInterval = randomInterval(30, 420);
     const nextChangeTime = Date.now() + nextInterval;
 
-    saveState(visible, nextChangeTime);
-
-    setTimeout(() => {
-      toggleText();
-    }, nextInterval);
-
-    return nextChangeTime;
+    set(stateRef, {
+      visible: !state.visible,
+      nextChangeTime
+    });
   }
 
-  function toggleText() {
-    const state = loadState();
-    const newVisible = !(state?.visible ?? false);
+  // 🔁 nasłuch zmian (synchronizacja wszystkich klientów)
+  onValue(stateRef, (snapshot) => {
+    const state = snapshot.val();
 
-    render(newVisible);
-    const nextChangeTime = scheduleNext(newVisible);
-
-    if (window.countdownInterval) {
-      clearInterval(window.countdownInterval);
+    if (!state) {
+      // pierwszy klient inicjalizuje stan
+      scheduleNext({ visible: false });
+      return;
     }
-    window.countdownInterval = startCountdown(nextChangeTime);
-  }
 
-  function init() {
-    const state = loadState();
+    render(state.visible);
+    startCountdown(state.nextChangeTime);
 
-    if (state) {
-      const now = Date.now();
+    const delay = state.nextChangeTime - Date.now();
 
-      // jeśli czas już minął → wymuś zmianę
-      if (state.nextChangeTime <= now) {
-        toggleText();
-        return;
-      }
-
-      // odtwórz stan
-      render(state.visible);
-
-      const remaining = state.nextChangeTime - now;
-
+    if (delay > 0) {
       setTimeout(() => {
-        toggleText();
-      }, remaining);
-
-      window.countdownInterval = startCountdown(state.nextChangeTime);
+        scheduleNext(state);
+      }, delay);
     } else {
-      toggleText();
+      scheduleNext(state);
     }
-  }
-
-  init();
+  });
 </script>
-
-</body>
-</html>
